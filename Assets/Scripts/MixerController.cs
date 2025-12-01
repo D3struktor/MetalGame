@@ -10,10 +10,16 @@ public enum IngredientId
     Alko1,
     Alko2,
     Alko3,
+    Alko4,
+    Alko5,
+
     Energy1,
     Energy2,
-    Energy3
+    Energy3,
+    Energy4,
+    Energy5
 }
+
 
 public enum DrinkResult
 {
@@ -28,7 +34,7 @@ public class MixerController : MonoBehaviour
 {
     [Header("Pour settings")]
     public float unitsPerSecond = 100f;
-    public float maxTotalUnits = 1000f;
+    public float maxTotalUnits = 500f;
 
     [Header("Buttons")]
     public Button mixButton;
@@ -55,6 +61,10 @@ public class MixerController : MonoBehaviour
     [Header("Final Score UI")]
     public TextMeshProUGUI scoreText;
     public Button retryButton;
+
+    [Header("Vocalist Anim")]
+    public VocalistAnimator vocalistAnimator;
+
 
     private IngredientId? activeBottle = null;
     private Dictionary<IngredientId, float> pouredAmounts = new Dictionary<IngredientId, float>();
@@ -141,7 +151,6 @@ public class MixerController : MonoBehaviour
         if (isServing) return;
         if (!activeBottle.HasValue) return;
 
-        // Nalewanie: TRZYMASZ LPM gdzieś nad tłem / szklanką
         if (Input.GetMouseButton(0))
         {
             if (totalUnits >= maxTotalUnits)
@@ -191,70 +200,123 @@ public class MixerController : MonoBehaviour
         glassFill.fillAmount = Mathf.Clamp01(fill);
     }
 
-    public void OnMixButton()
+public void OnMixButton()
+{
+    if (isMixed) return;
+    if (isServing) return;
+
+    isMixed = true;
+
+
+    float totalAlko =
+        GetAmount(IngredientId.Alko1) +
+        GetAmount(IngredientId.Alko2) +
+        GetAmount(IngredientId.Alko3);
+
+    float totalEnergyLiquid =
+        GetAmount(IngredientId.Energy1) +
+        GetAmount(IngredientId.Energy2) +
+        GetAmount(IngredientId.Energy3);
+
+    lastTotalAlko = totalAlko;
+    lastTotalEnergy = totalEnergyLiquid;
+
+
+    float totalAggro = 0f;
+    float totalEnergyStat = 0f;
+    float totalClarity = 0f;
+
+    foreach (var kvp in pouredAmounts)
     {
-        if (isMixed) return;
-        if (isServing) return;
+        IngredientId id = kvp.Key;
+        float amount = kvp.Value;
 
-        isMixed = true;
+        if (!IngredientDatabase.Stats.TryGetValue(id, out IngredientStats stats))
+            continue;
 
-        float totalAlko =
-            GetAmount(IngredientId.Alko1) +
-            GetAmount(IngredientId.Alko2) +
-            GetAmount(IngredientId.Alko3);
 
-        float totalEnergy =
-            GetAmount(IngredientId.Energy1) +
-            GetAmount(IngredientId.Energy2) +
-            GetAmount(IngredientId.Energy3);
+        float factor = amount / 100f;
 
-        lastTotalAlko = totalAlko;
-        lastTotalEnergy = totalEnergy;
+        totalAggro      += stats.aggroPerUnit   * factor;
+        totalEnergyStat += stats.energyPerUnit  * factor;
+        totalClarity    += stats.clarityPerUnit * factor;
+    }
 
-        if (totalAlko < 150f && totalEnergy < 150f)
-            lastResult = DrinkResult.Boring;
-        else if (totalAlko < 400f && totalEnergy < 400f)
-            lastResult = DrinkResult.Decent;
-        else if (totalAlko < 700f)
-            lastResult = DrinkResult.Overkill;
-        else
-            lastResult = DrinkResult.Death;
+    if (totalAggro < 3f && totalEnergyStat < 3f)
+    {
+        lastResult = DrinkResult.Boring;
+    }
+    else if (totalAggro >= 3f && totalAggro <= 10f &&
+             totalEnergyStat >= 3f && totalEnergyStat <= 10f &&
+             totalClarity > -5f && totalClarity < 5f)
+    {
+        lastResult = DrinkResult.Decent;
+    }
+    else if ((totalAggro > 10f || totalEnergyStat > 10f) && totalClarity < 0f && totalClarity > -10f)
+    {
+        lastResult = DrinkResult.Overkill;
+    }
+    else
+    {
+        lastResult = DrinkResult.Death;
+    }
 
-        switch (lastResult)
-        {
-            case DrinkResult.Boring:
-                finalScore = 100;
-                break;
-            case DrinkResult.Decent:
-                finalScore = 300;
-                break;
-            case DrinkResult.Overkill:
-                finalScore = 500;
-                break;
-            case DrinkResult.Death:
-                finalScore = 0;
-                break;
-            default:
-                finalScore = 0;
-                break;
-        }
+    switch (lastResult)
+    {
+        case DrinkResult.Boring:
+            finalScore = 100;
+            break;
+        case DrinkResult.Decent:
+            finalScore = 300;
+            break;
+        case DrinkResult.Overkill:
+            finalScore = 600;
+            break;
+        case DrinkResult.Death:
+            finalScore = 0;
+            break;
+        default:
+            finalScore = 0;
+            break;
+    }
 
+    if (debugText != null)
+    {
+        debugText.text =
+            $"Result: {lastResult}\n" +
+            $"Alko: {totalAlko:F0} | Energy: {totalEnergyLiquid:F0}\n" +
+            $"Aggro: {totalAggro:F1} | EnergyStat: {totalEnergyStat:F1} | Clarity: {totalClarity:F1}";
+    }
+
+    Debug.Log($"MIX pressed. Result={lastResult}, Aggro={totalAggro}, EnergyStat={totalEnergyStat}, Clarity={totalClarity}");
+}
+
+
+public void OnServeButton()
+{
+    if (isServing) return;
+
+    if (!isMixed)
+    {
+        Debug.Log("Serve pressed but nothing mixed yet.");
         if (debugText != null)
-            debugText.text = $"Result: {lastResult}\nAlko: {totalAlko:F0} | Energy: {totalEnergy:F0}";
+            debugText.text = "Mix something first!";
+        return;
     }
 
-    public void OnServeButton()
+    isServing = true;
+
+    if (vocalistAnimator != null)
     {
-        if (isServing) return;
-        if (!isMixed) return;
-
-        isServing = true;
-
-        if (idleRoutine != null)
-            StopCoroutine(idleRoutine);
-
-        StartCoroutine(ServeSequence());
+        vocalistAnimator.PlayDrinkAndOutcome(lastResult);
     }
+    else
+    {
+        Debug.LogWarning("MixerController: VocalistAnimator is NOT assigned!");
+    }
+     StartCoroutine(ServeSequence());
+}
+
 
     private IEnumerator IdleLoop()
     {
