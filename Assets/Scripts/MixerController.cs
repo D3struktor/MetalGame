@@ -64,6 +64,9 @@ public class MixerController : MonoBehaviour
     [Header("Vocalist Anim")]
     public VocalistAnimator vocalistAnimator;
 
+    [Header("Concert Director")]
+    public ConcertDirector concertDirector;
+
     private IngredientId? activeBottle = null;
     private Dictionary<IngredientId, float> pouredAmounts = new Dictionary<IngredientId, float>();
     private float totalUnits = 0f;
@@ -148,6 +151,12 @@ public class MixerController : MonoBehaviour
 
         if (retryButton != null)
             retryButton.gameObject.SetActive(false);
+
+        if (concertDirector == null)
+        concertDirector = FindObjectOfType<ConcertDirector>();
+
+        if (concertDirector != null)
+            concertDirector.HideConcert();
     }
 
     private void HandlePouring()
@@ -215,19 +224,23 @@ public class MixerController : MonoBehaviour
         float totalAlko =
             GetAmount(IngredientId.Alko1) +
             GetAmount(IngredientId.Alko2) +
-            GetAmount(IngredientId.Alko3);
+            GetAmount(IngredientId.Alko3) +
+            GetAmount(IngredientId.Alko4) +
+            GetAmount(IngredientId.Alko5);
 
         float totalEnergyLiquid =
             GetAmount(IngredientId.Energy1) +
             GetAmount(IngredientId.Energy2) +
-            GetAmount(IngredientId.Energy3);
+            GetAmount(IngredientId.Energy3) +
+            GetAmount(IngredientId.Energy4) +
+            GetAmount(IngredientId.Energy5);
 
         lastTotalAlko = totalAlko;
         lastTotalEnergy = totalEnergyLiquid;
 
         float totalAggro = 0f;
-        float totalEnergyStat = 0f;
-        float totalClarity = 0f;
+        float totalEnergyStatValue = 0f;
+        float totalClarityValue = 0f;
 
         foreach (var kvp in pouredAmounts)
         {
@@ -239,26 +252,27 @@ public class MixerController : MonoBehaviour
 
             float factor = amount / 100f;
 
-            totalAggro      += stats.aggroPerUnit   * factor;
-            totalEnergyStat += stats.energyPerUnit  * factor;
-            totalClarity    += stats.clarityPerUnit * factor;
+            totalAggro           += stats.aggroPerUnit   * factor;
+            totalEnergyStatValue += stats.energyPerUnit  * factor;
+            totalClarityValue    += stats.clarityPerUnit * factor;
         }
 
         lastAggro = totalAggro;
-        lastEnergyStat = totalEnergyStat;
-        lastClarity = totalClarity;
+        lastEnergyStat = totalEnergyStatValue;
+        lastClarity = totalClarityValue;
 
-        if (totalAggro < 3f && totalEnergyStat < 3f)
+        if (totalAggro < 3f && totalEnergyStatValue < 3f)
         {
             lastResult = DrinkResult.Boring;
         }
         else if (totalAggro >= 3f && totalAggro <= 10f &&
-                 totalEnergyStat >= 3f && totalEnergyStat <= 10f &&
-                 totalClarity > -5f && totalClarity < 5f)
+                 totalEnergyStatValue >= 3f && totalEnergyStatValue <= 10f &&
+                 totalClarityValue > -5f && totalClarityValue < 5f)
         {
             lastResult = DrinkResult.Decent;
         }
-        else if ((totalAggro > 10f || totalEnergyStat > 10f) && totalClarity < 0f && totalClarity > -10f)
+        else if ((totalAggro > 10f || totalEnergyStatValue > 10f) &&
+                 totalClarityValue < 0f && totalClarityValue > -10f)
         {
             lastResult = DrinkResult.Overkill;
         }
@@ -291,37 +305,38 @@ public class MixerController : MonoBehaviour
             debugText.text =
                 $"Result: {lastResult}\n" +
                 $"Alko: {totalAlko:F0} | Energy: {totalEnergyLiquid:F0}\n" +
-                $"Aggro: {totalAggro:F1} | EnergyStat: {totalEnergyStat:F1} | Clarity: {totalClarity:F1}";
+                $"Aggro: {totalAggro:F1} | EnergyStat: {totalEnergyStatValue:F1} | Clarity: {totalClarityValue:F1}";
         }
-
-        Debug.Log($"MIX pressed. Result={lastResult}, Aggro={totalAggro}, EnergyStat={totalEnergyStat}, Clarity={totalClarity}");
     }
 
-    public void OnServeButton()
+public void OnServeButton()
+{
+    if (isServing) return;
+
+    if (!isMixed)
     {
-        if (isServing) return;
-
-        if (!isMixed)
-        {
-            Debug.Log("Serve pressed but nothing mixed yet.");
-            if (debugText != null)
-                debugText.text = "Mix something first!";
-            return;
-        }
-
-        isServing = true;
-
-        if (vocalistAnimator != null)
-        {
-            vocalistAnimator.PlayDrinkAndOutcome(lastResult);
-        }
-        else
-        {
-            Debug.LogWarning("MixerController: VocalistAnimator is NOT assigned!");
-        }
-
-        StartCoroutine(ServeSequence());
+        Debug.Log("Serve pressed but nothing mixed yet.");
+        if (debugText != null)
+            debugText.text = "Mix something first!";
+        return;
     }
+
+    isServing = true;
+
+    Debug.Log("[Mixer] Serve pressed, starting ServeSequence");
+
+    if (vocalistAnimator != null)
+    {
+        vocalistAnimator.PlayDrinkAndOutcome(lastResult);
+    }
+    else
+    {
+        Debug.LogWarning("MixerController: VocalistAnimator is NOT assigned!");
+    }
+
+    StartCoroutine(ServeSequence());
+}
+
 
     private IEnumerator IdleLoop()
     {
@@ -338,68 +353,105 @@ public class MixerController : MonoBehaviour
         }
     }
 
-    private IEnumerator ServeSequence()
+private IEnumerator ServeSequence()
+{
+    if (vocalistImage != null && drinkSprite != null)
+        vocalistImage.sprite = drinkSprite;
+
+    yield return new WaitForSeconds(1.0f);
+
+    if (fadeImage != null)
     {
-        if (vocalistImage != null && drinkSprite != null)
-            vocalistImage.sprite = drinkSprite;
+        Color c = fadeImage.color;
+        float duration = 2.0f;
 
-        yield return new WaitForSeconds(1.0f);
-
-        if (fadeImage != null)
+        for (float t = 0; t < duration; t += Time.deltaTime)
         {
-            Color c = fadeImage.color;
-            float duration = 1.0f;
-
-            for (float t = 0; t < duration; t += Time.deltaTime)
-            {
-                float lerp = t / duration;
-                c.a = Mathf.Lerp(0f, 1f, lerp);
-                fadeImage.color = c;
-                yield return null;
-            }
-            c.a = 1f;
+            float lerp = t / duration;
+            c.a = Mathf.Lerp(0f, 1f, lerp);
             fadeImage.color = c;
+            yield return null;
         }
-
-        ShowOutcome();
+        c.a = 1f;
+        fadeImage.color = c;
     }
 
-    private void ShowOutcome()
+    Debug.Log("[Mixer] Fade finished, calling ShowOutcome");
+    ShowOutcome();
+
+    if (fadeImage != null)
     {
-        if (outcomeImage != null)
-        {
-            switch (lastResult)
-            {
-                case DrinkResult.Boring:
-                    outcomeImage.sprite = boringOutcome;
-                    break;
-                case DrinkResult.Decent:
-                    outcomeImage.sprite = decentOutcome;
-                    break;
-                case DrinkResult.Overkill:
-                    outcomeImage.sprite = overkillOutcome;
-                    break;
-                case DrinkResult.Death:
-                    outcomeImage.sprite = deathOutcome;
-                    break;
-                default:
-                    outcomeImage.sprite = boringOutcome;
-                    break;
-            }
+        Color c = fadeImage.color;
+        c.a = 0f;
+        fadeImage.color = c;
+    }
+}
 
-            outcomeImage.gameObject.SetActive(true);
+
+
+
+private void ShowOutcome()
+{
+    if (concertDirector == null)
+    {
+        concertDirector = FindObjectOfType<ConcertDirector>();
+        if (concertDirector == null)
+        {
+            Debug.LogWarning("[Mixer] ShowOutcome: no ConcertDirector found in scene!");
         }
-
-        if (scoreText != null)
-            scoreText.text = $"Score: {finalScore}";
-
-        if (retryButton != null)
+        else
         {
-            retryButton.gameObject.SetActive(true);
-            retryButton.onClick.RemoveAllListeners();
-            retryButton.onClick.AddListener(OnRetry);
+            Debug.Log("[Mixer] ShowOutcome: found ConcertDirector via FindObjectOfType");
         }
     }
+
+    if (concertDirector != null)
+    {
+        Debug.Log($"[Mixer] Calling ConcertDirector.ShowConcert, result={lastResult}, aggro={lastAggro}, energy={lastEnergyStat}, clarity={lastClarity}");
+        concertDirector.ShowConcert(
+            lastResult,
+            lastAggro,
+            lastEnergyStat,
+            lastClarity
+        );
+    }
+    else if (outcomeImage != null)
+    {
+        Debug.Log("[Mixer] Using fallback outcomeImage instead of ConcertDirector");
+
+        switch (lastResult)
+        {
+            case DrinkResult.Boring:
+                outcomeImage.sprite = boringOutcome;
+                break;
+            case DrinkResult.Decent:
+                outcomeImage.sprite = decentOutcome;
+                break;
+            case DrinkResult.Overkill:
+                outcomeImage.sprite = overkillOutcome;
+                break;
+            case DrinkResult.Death:
+                outcomeImage.sprite = deathOutcome;
+                break;
+            default:
+                outcomeImage.sprite = boringOutcome;
+                break;
+        }
+
+        outcomeImage.gameObject.SetActive(true);
+    }
+
+    if (scoreText != null)
+        scoreText.text = $"Score: {finalScore}";
+
+    if (retryButton != null)
+    {
+        retryButton.gameObject.SetActive(true);
+        retryButton.onClick.RemoveAllListeners();
+        retryButton.onClick.AddListener(OnRetry);
+    }
+}
+
 
     private void OnRetry()
     {
@@ -413,4 +465,6 @@ public class MixerController : MonoBehaviour
 
         return pouredAmounts[id];
     }
+
+
 }

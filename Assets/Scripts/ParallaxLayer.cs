@@ -2,20 +2,20 @@ using UnityEngine;
 
 public class ParallaxLayer : MonoBehaviour
 {
-    public Vector2 amplitude = new Vector2(20f, 0f);   // jak daleko ma „chodzić”
-    public Vector2 frequency = new Vector2(0.2f, 0f);  // jak szybko
+    public Vector2 amplitude = new Vector2(20f, 0f);
+    public Vector2 frequency = new Vector2(0.2f, 0f);
 
-    private RectTransform rt;
-    private Vector2 startPos;
+    RectTransform rt;
+    Vector2 startPos;
 
-    private void Awake()
+    void Awake()
     {
         rt = GetComponent<RectTransform>();
         if (rt != null)
             startPos = rt.anchoredPosition;
     }
 
-    private void Update()
+    void Update()
     {
         if (rt == null) return;
 

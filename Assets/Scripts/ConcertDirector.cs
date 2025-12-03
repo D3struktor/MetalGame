@@ -1,35 +1,86 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
+
+[System.Serializable]
+public class FinalVocalistClip
+{
+    public Sprite[] frames;
+    public float frameTime = 0.2f;
+    public bool loop = true;
+}
 
 public class ConcertDirector : MonoBehaviour
 {
-    [Header("Final Concert Panel")]
-    public GameObject concertPanel;     
-    public Image concertBackground;     
-    public TextMeshProUGUI concertText; 
-    public AudioSource musicSource;     
-    public AudioClip[] musicVariants;   // 0..8
+    [Header("Root")]
+    public GameObject concertPanel;
 
-    [Header("Background Variants")]
-    public Sprite[] backgroundVariants; 
+    [Header("Background")]
+    public Image backgroundImage;
+    public Sprite[] backgroundVariants;
 
-    [Header("Parallax")]
-    public ParallaxLayer[] parallaxLayers; 
+    [Header("Extra Vocalist")]
+    public Image extraVocalistImage;
+    public FinalVocalistClip[] vocalistVariants;
 
+    [Header("Music")]
+    public AudioSource musicSource;
+    public AudioClip[] musicVariants;
+
+    [Header("Parallax Layers")]
+    public ParallaxLayer[] parallaxLayers;
+
+    Coroutine vocalistRoutine;
+
+    public float extraVocalistDelay = 1.0f;
+    void Start()
+    {
+
+        if (Application.isPlaying && concertPanel != null)
+            concertPanel.SetActive(false);
+    }
+    
+    public void HideConcert()
+    {
+        Debug.Log("ConcertPanel state BEFORE: " + (concertPanel != null ? concertPanel.activeSelf.ToString() : "null"));
+
+        if (concertPanel != null)
+            concertPanel.SetActive(false);
+
+        if (extraVocalistImage != null)
+            extraVocalistImage.gameObject.SetActive(false);
+
+        if (musicSource != null)
+            musicSource.Stop();
+
+        if (vocalistRoutine != null)
+        {
+            StopCoroutine(vocalistRoutine);
+            vocalistRoutine = null;
+        }
+    }
     public void ShowConcert(DrinkResult result, float aggro, float energy, float clarity)
     {
         int variant = ComputeVariant(result, aggro, energy, clarity);
+        variant = Mathf.Clamp(variant, 0, 8);
 
+        
+        Debug.Log($"ConcertDirector.ShowConcert variant={variant}");
         if (concertPanel != null)
             concertPanel.SetActive(true);
 
-        if (backgroundVariants != null &&
+        if (extraVocalistImage != null)
+            extraVocalistImage.gameObject.SetActive(true);
+
+        if (backgroundImage != null &&
+            backgroundVariants != null &&
             variant >= 0 && variant < backgroundVariants.Length &&
-            concertBackground != null)
+            backgroundVariants[variant] != null)
         {
-            concertBackground.sprite = backgroundVariants[variant];
+            backgroundImage.sprite = backgroundVariants[variant];
         }
+
+        PlayVocalistVariant(variant);
 
         if (musicSource != null &&
             musicVariants != null &&
@@ -40,70 +91,125 @@ public class ConcertDirector : MonoBehaviour
             musicSource.clip = musicVariants[variant];
             musicSource.Play();
         }
+    }
+void PlayVocalistVariant(int variant)
+{
+    if (vocalistRoutine != null)
+        StopCoroutine(vocalistRoutine);
 
-        if (concertText != null)
-        {
-            concertText.text = GetTextForVariant(variant);
-        }
-
-        
+    if (extraVocalistImage == null ||
+        vocalistVariants == null ||
+        variant < 0 || variant >= vocalistVariants.Length)
+    {
+        if (extraVocalistImage != null)
+            extraVocalistImage.gameObject.SetActive(false);
+        return;
     }
 
-   
+    FinalVocalistClip clip = vocalistVariants[variant];
+    if (clip == null || clip.frames == null || clip.frames.Length == 0)
+    {
+        extraVocalistImage.gameObject.SetActive(false);
+        return;
+    }
+
+    vocalistRoutine = StartCoroutine(PlayVocalistClipWithDelay(clip));
+}
+
+IEnumerator PlayVocalistClipWithDelay(FinalVocalistClip clip)
+{
+    if (extraVocalistImage != null)
+        extraVocalistImage.gameObject.SetActive(false);
+
+    yield return new WaitForSeconds(extraVocalistDelay);
+
+    if (extraVocalistImage == null)
+        yield break;
+
+    extraVocalistImage.gameObject.SetActive(true);
+
+    int index = 0;
+    int length = clip.frames.Length;
+
+    while (true)
+    {
+        if (extraVocalistImage == null)
+            yield break;
+
+        extraVocalistImage.sprite = clip.frames[index];
+
+        float t = clip.frameTime <= 0f ? 0.1f : clip.frameTime;
+        yield return new WaitForSeconds(t);
+
+        index++;
+
+        if (index >= length)
+        {
+            if (clip.loop)
+                index = 0;
+            else
+                yield break;
+        }
+    }
+}
+
+    IEnumerator PlayVocalistClip(FinalVocalistClip clip)
+    {
+        int index = 0;
+        int length = clip.frames.Length;
+
+        while (true)
+        {
+            if (extraVocalistImage == null)
+                yield break;
+
+            extraVocalistImage.sprite = clip.frames[index];
+
+            float t = clip.frameTime <= 0f ? 0.1f : clip.frameTime;
+            yield return new WaitForSeconds(t);
+
+            index++;
+
+            if (index >= length)
+            {
+                if (clip.loop)
+                    index = 0;
+                else
+                    yield break;
+            }
+        }
+    }
 
     int ComputeVariant(DrinkResult result, float aggro, float energy, float clarity)
     {
-        // 0–2: chujnia
         if (result == DrinkResult.Boring)
         {
             if (energy < 3f && aggro < 3f && clarity > -1f)
-                return 0; 
+                return 0;
             if (energy < 6f && aggro < 6f)
-                return 1; 
-            return 2;     
+                return 1;
+            return 2;
         }
 
-        // 3–5: normalne 
         if (result == DrinkResult.Decent)
         {
             if (Mathf.Abs(aggro - energy) < 3f && clarity > -2f)
-                return 4; 
+                return 4;
             if (aggro + energy < 10f)
-                return 3; 
-            return 5;     
+                return 3;
+            return 5;
         }
 
-        // 6–7: overkill
         if (result == DrinkResult.Overkill)
         {
             if (clarity > -3f)
-                return 6; 
-            return 7;     
+                return 6;
+            return 7;
         }
 
-        // 8: totalny zgon
         if (result == DrinkResult.Death)
-        {
-            return 8; 
-        }
+            return 8;
 
         return 2;
-    }
-
-    string GetTextForVariant(int v)
-    {
-        switch (v)
-        {
-            case 0: return "Lipa";
-            case 1: return "Było... no było.";
-            case 2: return "średni";
-            case 3: return "Dobry";
-            case 4: return "Sztos";
-            case 5: return "Hardcore";
-            case 6: return "Totalny";
-            case 7: return "Anarchia";
-            case 8: return "Koncert zesrany";
-            default: return "";
-        }
     }
 }
