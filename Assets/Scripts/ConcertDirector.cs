@@ -107,7 +107,6 @@ public class ConcertDirector : MonoBehaviour
         }
         else if (crowdImage != null)
         {
-            // brak tłumu
             crowdImage.gameObject.SetActive(false);
         }
         }
@@ -199,36 +198,42 @@ IEnumerator PlayVocalistClipWithDelay(FinalVocalistClip clip)
         }
     }
 
-    int ComputeVariant(DrinkResult result, float aggro, float energy, float clarity)
+public int ComputeVariant(DrinkResult result, float totalAggro, float totalEnergyStat, float totalClarity)
+{
+    float power = totalAggro + totalEnergyStat;
+    float absC = Mathf.Abs(totalClarity);
+
+    switch (result)
     {
-        if (result == DrinkResult.Boring)
+        case DrinkResult.Boring:
         {
-            if (energy < 3f && aggro < 3f && clarity > -1f)
-                return 0;
-            if (energy < 6f && aggro < 6f)
-                return 1;
-            return 2;
+            if (power < 4f)
+                return 0;   
+            if (power < 8f)
+                return 1;   
+            return 2;       
         }
 
-        if (result == DrinkResult.Decent)
+        case DrinkResult.Decent:
         {
-            if (Mathf.Abs(aggro - energy) < 3f && clarity > -2f)
-                return 4;
-            if (aggro + energy < 10f)
-                return 3;
-            return 5;
+            if (power < 10f)
+                return 3;  
+            if (power <= 16f && absC <= 2f)
+                return 4;   
+            return 5;       
         }
 
-        if (result == DrinkResult.Overkill)
+        case DrinkResult.Overkill:
         {
-            if (clarity > -3f)
-                return 6;
-            return 7;
+            if (power <= 24f && absC <= -6f)
+                return 6;   
+            return 7;       
         }
 
-        if (result == DrinkResult.Death)
-            return 8;
-
-        return 2;
+        case DrinkResult.Death:
+        default:
+            return 8;      
     }
+}
+
 }

@@ -87,6 +87,9 @@ public class MixerController : MonoBehaviour
     private float lastEnergyStat;
     private float lastClarity;
 
+    private bool globalTimerStarted = false;
+    private float timeLimit = 60f;
+
     private void Awake()
     {
         bottleButtons.AddRange(FindObjectsOfType<BottleButton>());
@@ -157,6 +160,12 @@ public class MixerController : MonoBehaviour
 
         if (concertDirector != null)
             concertDirector.HideConcert();
+
+        if (!globalTimerStarted)
+        {
+            globalTimerStarted = true;
+            StartCoroutine(GlobalServeTimer());
+        }
     }
 
     private void HandlePouring()
@@ -214,100 +223,105 @@ public class MixerController : MonoBehaviour
         glassFill.fillAmount = Mathf.Clamp01(fill);
     }
 
-    public void OnMixButton()
+public void OnMixButton()
+{
+    if (isMixed) return;
+    if (isServing) return;
+
+    isMixed = true;
+
+    float totalAlko =
+        GetAmount(IngredientId.Alko1) +
+        GetAmount(IngredientId.Alko2) +
+        GetAmount(IngredientId.Alko3) +
+        GetAmount(IngredientId.Alko4) +
+        GetAmount(IngredientId.Alko5);
+
+    float totalEnergyLiquid =
+        GetAmount(IngredientId.Energy1) +
+        GetAmount(IngredientId.Energy2) +
+        GetAmount(IngredientId.Energy3) +
+        GetAmount(IngredientId.Energy4) +
+        GetAmount(IngredientId.Energy5);
+
+    lastTotalAlko = totalAlko;
+    lastTotalEnergy = totalEnergyLiquid;
+
+    float totalAggro      = 0f;
+    float totalEnergyStat = 0f;
+    float totalClarity    = 0f;
+
+    foreach (var kvp in pouredAmounts)
     {
-        if (isMixed) return;
-        if (isServing) return;
+        IngredientId id = kvp.Key;
+        float amount = kvp.Value; 
 
-        isMixed = true;
+        if (!IngredientDatabase.Stats.TryGetValue(id, out IngredientStats stats))
+            continue;
 
-        float totalAlko =
-            GetAmount(IngredientId.Alko1) +
-            GetAmount(IngredientId.Alko2) +
-            GetAmount(IngredientId.Alko3) +
-            GetAmount(IngredientId.Alko4) +
-            GetAmount(IngredientId.Alko5);
+        float factor = amount / 100f; 
 
-        float totalEnergyLiquid =
-            GetAmount(IngredientId.Energy1) +
-            GetAmount(IngredientId.Energy2) +
-            GetAmount(IngredientId.Energy3) +
-            GetAmount(IngredientId.Energy4) +
-            GetAmount(IngredientId.Energy5);
-
-        lastTotalAlko = totalAlko;
-        lastTotalEnergy = totalEnergyLiquid;
-
-        float totalAggro = 0f;
-        float totalEnergyStatValue = 0f;
-        float totalClarityValue = 0f;
-
-        foreach (var kvp in pouredAmounts)
-        {
-            IngredientId id = kvp.Key;
-            float amount = kvp.Value;
-
-            if (!IngredientDatabase.Stats.TryGetValue(id, out IngredientStats stats))
-                continue;
-
-            float factor = amount / 100f;
-
-            totalAggro           += stats.aggroPerUnit   * factor;
-            totalEnergyStatValue += stats.energyPerUnit  * factor;
-            totalClarityValue    += stats.clarityPerUnit * factor;
-        }
-
-        lastAggro = totalAggro;
-        lastEnergyStat = totalEnergyStatValue;
-        lastClarity = totalClarityValue;
-
-        if (totalAggro < 3f && totalEnergyStatValue < 3f)
-        {
-            lastResult = DrinkResult.Boring;
-        }
-        else if (totalAggro >= 3f && totalAggro <= 10f &&
-                 totalEnergyStatValue >= 3f && totalEnergyStatValue <= 10f &&
-                 totalClarityValue > -5f && totalClarityValue < 5f)
-        {
-            lastResult = DrinkResult.Decent;
-        }
-        else if ((totalAggro > 10f || totalEnergyStatValue > 10f) &&
-                 totalClarityValue < 0f && totalClarityValue > -10f)
-        {
-            lastResult = DrinkResult.Overkill;
-        }
-        else
-        {
-            lastResult = DrinkResult.Death;
-        }
-
-        switch (lastResult)
-        {
-            case DrinkResult.Boring:
-                finalScore = 100;
-                break;
-            case DrinkResult.Decent:
-                finalScore = 300;
-                break;
-            case DrinkResult.Overkill:
-                finalScore = 600;
-                break;
-            case DrinkResult.Death:
-                finalScore = 0;
-                break;
-            default:
-                finalScore = 0;
-                break;
-        }
-
-        if (debugText != null)
-        {
-            debugText.text =
-                $"Result: {lastResult}\n" +
-                $"Alko: {totalAlko:F0} | Energy: {totalEnergyLiquid:F0}\n" +
-                $"Aggro: {totalAggro:F1} | EnergyStat: {totalEnergyStatValue:F1} | Clarity: {totalClarityValue:F1}";
-        }
+        totalAggro      += stats.aggroPerUnit   * factor;
+        totalEnergyStat += stats.energyPerUnit  * factor;
+        totalClarity    += stats.clarityPerUnit * factor;
     }
+
+    float power      = totalAggro + totalEnergyStat;     
+    float absClarity = Mathf.Abs(totalClarity);         
+
+    if (power < 6f)
+    {
+        lastResult = DrinkResult.Boring;
+    }
+    else if (power >= 6f && power <= 18f && absClarity <= 4f)
+    {
+
+        lastResult = DrinkResult.Decent;
+    }
+    else if (power > 18f && absClarity <= 8f)
+    {
+        lastResult = DrinkResult.Overkill;
+    }
+    else
+    {
+        lastResult = DrinkResult.Death;
+    }
+
+
+    int baseScore;
+    switch (lastResult)
+    {
+        case DrinkResult.Boring:   baseScore = 41;  break;
+        case DrinkResult.Decent:   baseScore = 163; break;
+        case DrinkResult.Overkill: baseScore = 287; break;
+        case DrinkResult.Death:    baseScore = 69;  break;
+        default:                   baseScore = 0;   break;
+    }
+
+    float fillPercent = (maxTotalUnits > 0f) ? (totalUnits / maxTotalUnits) : 0f;
+    fillPercent = Mathf.Clamp01(fillPercent);
+
+
+    float balance = Mathf.Clamp01(1f - (absClarity / 15f)); 
+
+    float comboRaw = power * 4f * balance * fillPercent;
+    int comboBonus = Mathf.RoundToInt(comboRaw);
+
+    finalScore = Mathf.Max(0, baseScore + comboBonus);
+
+    if (debugText != null)
+    {
+        debugText.text =
+            $"Result: {lastResult}";
+        //     $"Alko: {totalAlko:F0} | Energy: {totalEnergyLiquid:F0}\n" +
+        //     $"Aggro: {totalAggro:F1} | EnergyStat: {totalEnergyStat:F1} | \nClarity: {totalClarity:F1}\n" +
+        //     $"Power: {power:F1} | Balance: {balance:F2}\n" +
+        //     $"Score: {finalScore} (base {baseScore} + {comboBonus})";
+    }
+
+    Debug.Log($"MIX pressed. Result={lastResult}, Aggro={totalAggro}, EnergyStat={totalEnergyStat}, Clarity={totalClarity}, Score={finalScore}");
+}
+
 
 public void OnServeButton()
 {
@@ -315,27 +329,37 @@ public void OnServeButton()
 
     if (!isMixed)
     {
-        Debug.Log("Serve pressed but nothing mixed yet.");
+        // Debug.Log("Serve pressed but nothing mixed yet.");
+        // if (debugText != null)
+        //     debugText.text = "";
+        // return;
+    }
+
+    float fillPercent = totalUnits / maxTotalUnits;
+    if (fillPercent < 0.70f)
+    {
+        
         if (debugText != null)
-            debugText.text = "Mix something first!";
+            debugText.text = "Pussy, Not enough!";
+        lastResult = DrinkResult.Boring;
+         StartCoroutine(ServeSequence());
         return;
     }
 
     isServing = true;
 
-    Debug.Log("[Mixer] Serve pressed, starting ServeSequence");
+    var glassHider = FindObjectOfType<GlassHider>();
+    if (glassHider != null)
+        glassHider.HideForSeconds();
 
     if (vocalistAnimator != null)
-    {
         vocalistAnimator.PlayDrinkAndOutcome(lastResult);
-    }
-    else
-    {
-        Debug.LogWarning("MixerController: VocalistAnimator is NOT assigned!");
-    }
+
 
     StartCoroutine(ServeSequence());
 }
+
+
 
 
     private IEnumerator IdleLoop()
@@ -376,7 +400,6 @@ private IEnumerator ServeSequence()
         fadeImage.color = c;
     }
 
-    Debug.Log("[Mixer] Fade finished, calling ShowOutcome");
     ShowOutcome();
 
     if (fadeImage != null)
@@ -465,6 +488,34 @@ private void ShowOutcome()
 
         return pouredAmounts[id];
     }
+    private IEnumerator GlobalServeTimer()
+    {
+        float t = 0f;
+
+        while (t < timeLimit)
+        {
+            if (isServing) yield break; 
+            t += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!isServing)
+        {
+            Debug.Log("Timeout! Auto-serve BORING.");
+
+            lastResult = DrinkResult.Boring;
+            isServing = true;
+
+            var glassHider = FindObjectOfType<GlassHider>();
+            if (glassHider != null)
+                glassHider.HideForSeconds();
+
+            if (vocalistAnimator != null)
+                vocalistAnimator.PlayDrinkAndOutcome(lastResult);
+
+            StartCoroutine(ServeSequence());
+        }
+}
 
 
 }
