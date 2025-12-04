@@ -32,6 +32,11 @@ public class ConcertDirector : MonoBehaviour
 
     Coroutine vocalistRoutine;
 
+    [Header("Crowd")]
+    public Image crowdImage;
+    public Sprite[] crowdVariants;
+
+
     public float extraVocalistDelay = 1.0f;
     void Start()
     {
@@ -91,7 +96,21 @@ public class ConcertDirector : MonoBehaviour
             musicSource.clip = musicVariants[variant];
             musicSource.Play();
         }
-    }
+
+        if (crowdImage != null &&
+        crowdVariants != null &&
+        variant < crowdVariants.Length &&
+        crowdVariants[variant] != null)
+        {
+            crowdImage.sprite = crowdVariants[variant];
+            crowdImage.gameObject.SetActive(true);
+        }
+        else if (crowdImage != null)
+        {
+            // brak tłumu
+            crowdImage.gameObject.SetActive(false);
+        }
+        }
 void PlayVocalistVariant(int variant)
 {
     if (vocalistRoutine != null)
